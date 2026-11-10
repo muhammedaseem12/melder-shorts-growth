@@ -20,7 +20,7 @@ module.exports = async (req, res) => {
       hook: String(c.hook || "").slice(0, 280),
       duration: String(c.duration || "").slice(0, 24),
       score: Number.isFinite(Number(c.score)) ? Math.max(0, Math.min(100, Number(c.score))) : undefined,
-      downloadUrl: typeof c.downloadUrl === "string" && /^https:\/\//.test(c.downloadUrl) ? c.downloadUrl : undefined
+      downloadUrl: typeof c.downloadUrl === "string" && c.downloadUrl.startsWith("/") ? new URL(c.downloadUrl, worker).toString() : (typeof c.downloadUrl === "string" && /^https:\/\//.test(c.downloadUrl) ? c.downloadUrl : undefined)
     })) : [];
     return res.status(200).json({ status: data.status, progress: Math.max(0, Math.min(100, Number(data.progress) || 0)), message: String(data.message || "").slice(0, 300), clips, error: data.status === "failed" ? String(data.error || "Processing failed").slice(0, 300) : undefined });
   } catch {
