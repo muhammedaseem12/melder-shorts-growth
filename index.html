@@ -44,7 +44,7 @@
 <footer class="foot">MELDER AI CLIPPER · Create with permission · Review every clip before publishing<br>AI can help improve packaging and retention, but no tool can guarantee viral reach or views.</footer>
 </main>
 <script>
-const $=id=>document.getElementById(id);
+const $=id=>document.getElementById(id);let clientJobStartedAt=0;
 function status(message,error=false,meta=''){$('status').replaceChildren();const main=document.createElement('span');main.className='statusmain';main.textContent=message;$('status').append(main);if(meta){const detail=document.createElement('span');detail.className='statusmeta';detail.textContent=meta;$('status').append(detail)}$('status').classList.toggle('error',error);$('status').style.display='block'}
 function clock(seconds){if(!Number.isFinite(seconds)||seconds<0)return '—';seconds=Math.floor(seconds);const h=Math.floor(seconds/3600),m=Math.floor((seconds%3600)/60),s=seconds%60;return h?`${h}h ${m}m`:m?`${m}m ${s}s`:`${s}s`}
 function isAllowedLink(raw){try{const u=new URL(raw.trim());if(u.protocol!=='https:')return false;return !!u.hostname}catch{return false}}
@@ -52,7 +52,7 @@ $('analyzeBtn').addEventListener('click',async()=>{
  const btn=$('analyzeBtn'),url=$('videoUrl').value.trim();
  if(!isAllowedLink(url)){status('Please paste a valid HTTPS YouTube or direct video link.',true);return}
  if(!$('rightsConfirmed').checked){status('Please confirm that you own or are authorised to use this video.',true);return}
- btn.disabled=true;btn.textContent='Starting…';$('progress').style.display='block';$('progressFill').style.width='2%';
+ btn.disabled=true;btn.textContent='Starting…';clientJobStartedAt=Date.now();$('progress').style.display='block';$('progressFill').style.width='2%';
  status('Connecting to the free open-source clipping worker…');
  try{
   const r=await fetch('/api/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({videoUrl:url,clipCount:Number($('clipCount').value),clipLength:$('clipLength').value,aspectRatio:$('aspect').value,rightsConfirmed:true})});
@@ -70,8 +70,8 @@ async function poll(id){
    if(!r.ok)throw new Error(d.error||'Could not read job status');
    failures=0;const pct=Math.max(0,Math.min(100,Number(d.progress)||0));
    $('progressFill').style.width=pct+'%';$('progressHead').classList.remove('hidden');$('progressPercent').textContent=Math.round(pct)+'% complete';$('progressStage').textContent=d.status==='queued'?'In queue':pct>=100?'Completed':'Processing';
-   const elapsed=clock(Number(d.elapsedSeconds)||0);let meta='Elapsed: '+elapsed;
-   if(d.status==='queued')meta+=' · Waiting for worker';else if(Number.isFinite(Number(d.etaSeconds))&&Number(d.etaSeconds)>=0)meta+=' · Estimated remaining: '+clock(Number(d.etaSeconds));else if(d.status==='processing')meta+=' · Estimating remaining time…';
+   const elapsedSeconds=Math.max(Number(d.elapsedSeconds)||0,clientJobStartedAt?Math.floor((Date.now()-clientJobStartedAt)/1000):0);const elapsed=clock(elapsedSeconds);let meta='Elapsed: '+elapsed;const eta=Number.isFinite(Number(d.etaSeconds))&&d.etaSeconds!==null?Number(d.etaSeconds):(pct>=10?elapsedSeconds*(100-pct)/Math.max(1,pct):null);
+   if(d.status==='queued')meta+=' · Waiting for worker';else if(eta!==null)meta+=' · Estimated remaining: '+clock(eta);else if(d.status==='processing')meta+=' · Estimating remaining time…';
    status(d.message||'Processing…',false,meta);
    if(d.status==='completed'){$('progressFill').style.width='100%';$('progressPercent').textContent='100% complete';$('progressStage').textContent='Completed';renderClips(d.clips||[]);status('Finished! Your clips are ready.',false,'Total time: '+clock(Number(d.elapsedSeconds)||0));$('analyzeBtn').disabled=false;$('analyzeBtn').textContent='Create another project ↗';return}
    if(d.status==='failed'){status(d.error||d.message||'The clip job failed.',true);$('progress').style.display='none';$('analyzeBtn').disabled=false;$('analyzeBtn').textContent='Try again ↗';return}
