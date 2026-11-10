@@ -23,6 +23,55 @@ def auth(value):
     if not SECRET or value != f"Bearer {SECRET}":
         raise HTTPException(401, "Unauthorized worker request")
 
+def detect_highlights(source, duration, clip_length, count, folder):
+    """Offline ranking from audio activity and scene changes; no external API."""
+    import array, math, re
+    rawfile = folder / "analysis-audio.pcm"
+    subprocess.run(["ffmpeg","-y","-i",str(source),"-vn","-ac","1","-ar","8000","-f","s16le",str(rawfile)],
+                   capture_output=True,check=True,timeout=900)
+    raw = rawfile.read_bytes()
+    rawfile.unlink(missing_ok=True)
+    samples = array.array("h")
+    samples.frombytes(raw[:len(raw)-(len(raw)%2)])
+    per_second = []
+    rate = 8000
+    for pos in range(0, len(samples), rate):
+        chunk = samples[pos:pos+rate]
+        if chunk:
+            rms = math.sqrt(sum(x*x for x in chunk)/len(chunk))
+            per_second.append(20*math.log10(max(rms,1)/32768))
+    if not per_second:
+        raise ValueError("No usable audio track was found in this video.")
+    scene = subprocess.run(["ffmpeg","-i",str(source),"-vf","select=gt(scene\\,0.22),showinfo","-an","-f","null","-"],
+                           capture_output=True,text=True,timeout=900)
+    scene_times = [float(x) for x in re.findall(r"pts_time:([0-9.]+)", scene.stderr)]
+    baseline = sorted(per_second)[max(0,int(len(per_second)*0.15)-1)]
+    candidates=[]
+    step=max(5,clip_length//3)
+    last=max(0,int(duration-clip_length))
+    for start in range(0,last+1,step):
+        end=min(duration,start+clip_length)
+        a=max(0,int(start)); b=min(len(per_second),max(a+1,int(end)))
+        vals=per_second[a:b]
+        if not vals: continue
+        active=sum(1 for v in vals if v>baseline+5)/len(vals)
+        mean=sum(vals)/len(vals)
+        variation=math.sqrt(sum((v-mean)**2 for v in vals)/len(vals))
+        scenes=sum(1 for t in scene_times if start<=t<end)
+        scene_rate=min(1.0,scenes/max(1,clip_length/8))
+        score=max(0,min(100,round(45*active+30*min(1,variation/12)+25*scene_rate)))
+        candidates.append({"start":start,"score":score})
+    candidates.sort(key=lambda x:x["score"],reverse=True)
+    chosen=[]
+    min_gap=max(clip_length*0.65,20)
+    for c in candidates:
+        if all(abs(c["start"]-x["start"])>=min_gap for x in chosen):
+            chosen.append(c)
+        if len(chosen)>=count: break
+    if not chosen:
+        raise ValueError("Could not identify highlight sections. Try a video with clear audio.")
+    return sorted(chosen,key=lambda x:x["start"])
+
 def run_job(job_id, payload, uploaded_source=None):
     folder = BASE / job_id
     folder.mkdir(parents=True, exist_ok=True)
@@ -52,15 +101,16 @@ def run_job(job_id, payload, uploaded_source=None):
         count = min(count, max(1, int(duration // max(8, length*0.65))))
         ratio = payload.get("aspectRatio", "9:16")
         vf = {"9:16":"scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280", "1:1":"scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080", "16:9":"scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720"}.get(ratio, "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280")
+        with lock: jobs[job_id].update(progress=8,message="Analysing audio and scene changes to find standout moments…")
+        candidates=detect_highlights(source,duration,length,count,folder)
         clips=[]
-        # Evenly spaced candidate excerpts; editorial/AI highlight ranking is not enabled in this baseline.
-        for i in range(count):
-            start = max(0, (duration-length) * (i/(max(1,count-1)))) if count > 1 else max(0,(duration-length)/2)
-            out = folder / f"clip-{i+1}.mp4"
+        for i,candidate in enumerate(candidates):
+            start=candidate["start"]
+            out=folder/f"clip-{i+1}.mp4"
             subprocess.run(["ffmpeg","-y","-ss",str(start),"-i",str(source),"-t",str(min(length,duration-start)),"-vf",vf,"-c:v","libx264","-preset","veryfast","-crf","24","-c:a","aac","-b:a","128k","-movflags","+faststart",str(out)],capture_output=True,check=True,timeout=900)
-            clips.append({"title":f"Clip {i+1}","hook":"Auto-extracted excerpt","duration":round(min(length,duration-start)),"score":None,"downloadUrl":f"/jobs/{job_id}/clips/{i+1}"})
-            with lock: jobs[job_id].update(progress=int((i+1)/count*100), clips=clips)
-        with lock: jobs[job_id].update(status="completed",progress=100,message="Clips are ready. These are evenly spaced excerpts, not AI-ranked highlights.",clips=clips)
+            clips.append({"title":f"Highlight {i+1}","hook":"Picked from audio activity and visual scene changes","duration":round(min(length,duration-start)),"score":candidate["score"],"downloadUrl":f"/jobs/{job_id}/clips/{i+1}"})
+            with lock: jobs[job_id].update(progress=10+int((i+1)/len(candidates)*90),clips=clips,message=f"Rendering highlight {i+1} of {len(candidates)}…")
+        with lock: jobs[job_id].update(status="completed",progress=100,message="Highlights are ready. This free offline detector ranks audio activity and scene changes; it does not understand spoken words or guarantee viral hooks.",clips=clips)
     except Exception as e:
         with lock: jobs[job_id].update(status="failed",message=str(e),progress=0)
 
