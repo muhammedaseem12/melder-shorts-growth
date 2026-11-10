@@ -93,8 +93,6 @@ def _run_job_locked(job_id, payload, uploaded_source=None):
     folder.mkdir(parents=True, exist_ok=True)
     try:
         url = str(payload["videoUrl"])
-        if any(host in url.lower() for host in ("youtube.com", "youtu.be", "youtube-nocookie.com")):
-            raise ValueError("YouTube links are not downloaded by this worker. Use a video file you own or have permission to process, hosted at a direct MP4/WebM URL.")
         parsed = urlparse(url)
         host = (parsed.hostname or "").lower()
         youtube_hosts = {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "www.youtu.be"}
