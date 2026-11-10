@@ -27,7 +27,7 @@ def auth(value):
 def detect_highlights(source, duration, clip_length, count, folder):
     """Memory-bounded highlight ranking using streamed audio and downscaled scene analysis."""
     import array, math, re
-    proc = subprocess.Popen(["ffmpeg", "-threads", "1", "-i", str(source), "-vn", "-ac", "1", "-ar", "8000", "-f", "s16le", "pipe:1"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    proc = subprocess.Popen(["ffmpeg", "-threads", "1", "-filter_threads", "1", "-filter_complex_threads", "1", "-i", str(source), "-vn", "-ac", "1", "-ar", "8000", "-f", "s16le", "pipe:1"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     per_second, pending = [], b""
     try:
         while True:
@@ -51,7 +51,7 @@ def detect_highlights(source, duration, clip_length, count, folder):
         if proc.stdout: proc.stdout.close()
         if proc.poll() is None: proc.kill()
     if not per_second: raise ValueError("No usable audio track was found in this video.")
-    scene = subprocess.run(["ffmpeg", "-threads", "1", "-i", str(source), "-vf", "fps=2,scale=640:-2,select=gt(scene\\,0.22),showinfo", "-an", "-f", "null", "-"], capture_output=True, text=True, timeout=900)
+    scene = subprocess.run(["ffmpeg", "-threads", "1", "-filter_threads", "1", "-filter_complex_threads", "1", "-i", str(source), "-vf", "fps=1,scale=480:-2,select=gt(scene\\,0.22),showinfo", "-an", "-f", "null", "-"], capture_output=True, text=True, timeout=900)
     scene_times = [float(x) for x in re.findall(r"pts_time:([0-9.]+)", scene.stderr)]
     baseline = sorted(per_second)[max(0, int(len(per_second) * 0.15) - 1)]
     candidates = []; step = max(5, clip_length // 3); last = max(0, int(duration - clip_length))
@@ -114,14 +114,14 @@ def _run_job_locked(job_id, payload, uploaded_source=None):
         count = min(20, max(1, int(payload["clipCount"])))
         count = min(count, max(1, int(duration // max(8, length*0.65))))
         ratio = payload.get("aspectRatio", "9:16")
-        vf = {"9:16":"scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280", "1:1":"scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080", "16:9":"scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720"}.get(ratio, "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280")
+        vf = {"9:16":"scale=540:960:force_original_aspect_ratio=increase,crop=540:960", "1:1":"scale=720:720:force_original_aspect_ratio=increase,crop=720:720", "16:9":"scale=960:540:force_original_aspect_ratio=increase,crop=960:540"}.get(ratio, "scale=540:960:force_original_aspect_ratio=increase,crop=540:960")
         with lock: jobs[job_id].update(progress=8,message="Analysing audio and scene changes to find standout moments…")
         candidates=detect_highlights(source,duration,length,count,folder)
         clips=[]
         for i,candidate in enumerate(candidates):
             start=candidate["start"]
             out=folder/f"clip-{i+1}.mp4"
-            subprocess.run(["ffmpeg","-threads","1","-filter_threads","1","-y","-ss",str(start),"-i",str(source),"-t",str(min(length,duration-start)),"-vf",vf,"-c:v","libx264","-threads","1","-preset","ultrafast","-crf","26","-c:a","aac","-b:a","96k","-movflags","+faststart",str(out)],capture_output=True,check=True,timeout=900)
+            subprocess.run(["ffmpeg","-threads","1","-filter_threads","1","-filter_complex_threads","1","-y","-ss",str(start),"-i",str(source),"-t",str(min(length,duration-start)),"-vf",vf,"-c:v","libx264","-threads","1","-preset","ultrafast","-crf","26","-c:a","aac","-b:a","96k","-movflags","+faststart",str(out)],capture_output=True,check=True,timeout=900)
             clips.append({"title":f"Highlight {i+1}","hook":"Picked from audio activity and visual scene changes","duration":round(min(length,duration-start)),"score":candidate["score"],"downloadUrl":f"/jobs/{job_id}/clips/{i+1}"})
             with lock: jobs[job_id].update(progress=10+int((i+1)/len(candidates)*90),clips=clips,message=f"Rendering highlight {i+1} of {len(candidates)}…")
         with lock: jobs[job_id].update(status="completed",progress=100,message="Highlights are ready. This free offline detector ranks audio activity and scene changes; it does not understand spoken words or guarantee viral hooks.",clips=clips)
