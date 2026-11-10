@@ -1,10 +1,8 @@
 // Vercel serverless endpoint. Keep worker credentials server-side only.
-const YT_HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "www.youtu.be"]);
-function validYouTubeUrl(value) {
+function validVideoFileUrl(value) {
   try {
     const u = new URL(value);
-    if (!["https:", "http:"].includes(u.protocol) || !YT_HOSTS.has(u.hostname.toLowerCase())) return false;
-    return Boolean(u.searchParams.get("v") || /^\/(shorts|live|embed)\/[A-Za-z0-9_-]{11}/.test(u.pathname) || (u.hostname.includes("youtu.be") && /^\/[A-Za-z0-9_-]{11}/.test(u.pathname)));
+    return u.protocol === "https:" && !["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "www.youtu.be"].includes(u.hostname.toLowerCase());
   } catch { return false; }
 }
 module.exports = async (req, res) => {
@@ -14,7 +12,7 @@ module.exports = async (req, res) => {
   const secret = process.env.CLIPPER_WORKER_SECRET;
   if (!worker || !secret) return res.status(503).json({ error: "AI processing is not connected yet. Configure CLIPPER_WORKER_URL and CLIPPER_WORKER_SECRET in the deployment environment, then redeploy." });
   const body = req.body || {};
-  if (!validYouTubeUrl(body.videoUrl)) return res.status(400).json({ error: "Provide a valid YouTube video URL." });
+  if (!validVideoFileUrl(body.videoUrl)) return res.status(400).json({ error: "Provide a direct HTTPS video-file URL. YouTube page URLs are not supported." });
   const clipCount = Number(body.clipCount);
   if (![5, 10, 15, 20].includes(clipCount)) return res.status(400).json({ error: "Choose between 5, 10, 15 or 20 clips." });
   const lengths = new Set(["15-30", "30-45", "45-60", "60-90"]);
