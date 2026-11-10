@@ -16,9 +16,10 @@
 <div class="workspace">
 <section class="card">
 <div class="cardhead"><h2>Start a new clipping project</h2><span class="step">STEP 01 / SOURCE</span></div>
-<label class="label" for="videoFile">Upload your video</label>
-<div class="urlrow"><input id="videoFile" class="field" type="file" accept="video/mp4,video/webm,.mp4,.webm"><button id="analyzeBtn" class="btn">Upload & Generate clips ↗</button></div>
-<div class="hint">Choose an MP4 or WebM video from your phone or computer (maximum 500 MB). Your video is uploaded securely to the clip worker. Only upload videos you own or have permission to use.</div>
+<label class="label" for="videoUrl">Paste a YouTube or direct video link</label>
+<div class="urlrow"><input id="videoUrl" class="field" type="url" inputmode="url" placeholder="https://www.youtube.com/watch?v=…" autocomplete="url"><button id="analyzeBtn" class="btn">Find clips ↗</button></div>
+<div class="hint">Paste a public YouTube link or a direct MP4/WebM URL. YouTube importing is attempted only for videos you own or are authorised to use, where downloading is permitted. Private, DRM-protected or restricted videos are not supported.</div>
+<label style="display:flex;gap:9px;align-items:flex-start;margin-top:13px;font-size:11px;line-height:1.5;color:#c8cee0"><input id="rightsConfirmed" type="checkbox" style="margin-top:2px;accent-color:#9568ff"> I own this video or have permission to download and create clips from it.</label>
 <div class="options">
 <div class="option"><label for="clipCount">Number of clips</label><select id="clipCount"><option value="5">5 clips</option><option value="10" selected>10 clips</option><option value="15">15 clips</option><option value="20">20 clips</option></select></div>
 <div class="option"><label for="clipLength">Clip duration</label><select id="clipLength"><option value="15-30">15–30 seconds</option><option value="30-45" selected>30–45 seconds</option><option value="45-60">45–60 seconds</option><option value="60-90">60–90 seconds</option></select></div>
@@ -27,13 +28,13 @@
 <div id="status" class="status" role="status" aria-live="polite"></div><div id="progress" class="progress"><div id="progressFill"></div></div>
 </section>
 <aside class="card"><h3 class="side-title">How your clips are made</h3><div class="steps">
-<div class="stepitem"><div class="stepicon">⌕</div><div><b>1. Check the video</b><span>Check the video file and its duration before clipping.</span></div></div>
+<div class="stepitem"><div class="stepicon">⌕</div><div><b>1. Check the video</b><span>Read the permitted video link and check its duration.</span></div></div>
 <div class="stepitem"><div class="stepicon">✦</div><div><b>2. Choose clip sections</b><span>Analyse audio activity and scene changes to find standout moments.</span></div></div>
 <div class="stepitem"><div class="stepicon">▣</div><div><b>3. Format the clips</b><span>Crop each excerpt to your selected aspect ratio.</span></div></div>
 <div class="stepitem"><div class="stepicon">⇩</div><div><b>4. Download your clips</b><span>Download the generated MP4 files and review them before publishing.</span></div></div>
 </div></aside>
 </div>
-<section class="section"><div class="sectionhead"><h2>Your generated clips</h2><span id="clipSummary">Your clips will appear here</span></div><div id="clips" class="empty"><strong>No clips yet</strong>Upload a video above to start a project. Your generated clips will appear here when the processing service is connected.</div></section>
+<section class="section"><div class="sectionhead"><h2>Your generated clips</h2><span id="clipSummary">Your clips will appear here</span></div><div id="clips" class="empty"><strong>No clips yet</strong>Paste a video link above to start a project. Your generated clips will appear here when the processing service is connected.</div></section>
 <section class="section"><div class="sectionhead"><h2>Built for creator workflows</h2><span>Made for short-form content</span></div><div class="featuregrid">
 <div class="feature"><i>✦</i><b>Smart highlight detection</b><span>Find active moments using audio and scene-change analysis.</span></div>
 <div class="feature"><i>🎬</i><b>MP4 output</b><span>Export clips as downloadable MP4 video files.</span></div>
@@ -44,75 +45,53 @@
 </main>
 <script>
 const $=id=>document.getElementById(id);
-function status(message,error=false){$('status').textContent=message;$('status').classList.toggle('error',error);$('status').classList.remove('hidden');$('status').style.display='block'}
-function validSourceUrl(raw){try{const u=new URL(raw.trim());if(u.protocol!=="https:")return false;const h=u.hostname.toLowerCase().replace(/^www\./,"");return ["youtube.com","m.youtube.com","youtu.be"].includes(h)||!["youtube-nocookie.com"].includes(h)}catch{return false}}
-function sourceUrlError(raw){try{const u=new URL(raw.trim());if(u.protocol!=="https:")return "Please use a secure HTTPS link.";return "Please paste a valid YouTube video URL or direct MP4/WebM file URL."}catch{return "Please paste a valid YouTube video URL or direct MP4/WebM file URL."}}
+function status(message,error=false){$('status').textContent=message;$('status').classList.toggle('error',error);$('status').style.display='block'}
+function isAllowedLink(raw){try{const u=new URL(raw.trim());if(u.protocol!=='https:')return false;return !!u.hostname}catch{return false}}
 $('analyzeBtn').addEventListener('click',async()=>{
-const file=$('videoFile').files[0];const btn=$('analyzeBtn');
-if(!file){status('Please choose a video file first.',true);return}
-if(!/\.(mp4|webm)$/i.test(file.name)){status('Please choose an MP4 or WebM video.',true);return}
-if(file.size>500*1024*1024){status('Video is larger than the 500 MB limit.',true);return}
-btn.disabled=true;btn.textContent='Uploading…';$('progress').style.display='block';$('progressFill').style.width='5%';
-status('Preparing a secure upload…');
-try{
- const tokenRes=await fetch('/api/upload-token',{method:'POST'});const tokenData=await tokenRes.json().catch(()=>({}));
- if(!tokenRes.ok||!tokenData.token)throw new Error(tokenData.error||'Could not prepare secure upload.');
- const form=new FormData();form.append('file',file);form.append('clipCount',$('clipCount').value);form.append('clipLength',$('clipLength').value);form.append('aspectRatio',$('aspect').value);
- status('Uploading '+file.name+'… Keep this page open until upload finishes.');
- const workerUrl='https://melder-clip-worker-v2.onrender.com/jobs/upload';
- const data=await new Promise((resolve,reject)=>{
-   const xhr=new XMLHttpRequest();
-   xhr.open('POST',workerUrl);
-   xhr.setRequestHeader('Authorization','Bearer '+tokenData.token);
-   xhr.upload.onprogress=(event)=>{
-     if(event.lengthComputable){
-       const pct=Math.round((event.loaded/event.total)*100);
-       $('progressFill').style.width=Math.max(1,pct)+'%';
-       status('Uploading video… '+pct+'% ('+Math.round(event.loaded/1048576)+' / '+Math.round(event.total/1048576)+' MB). Keep this page open.');
-     }
-   };
-   xhr.onload=()=>{
-     let body={};try{body=JSON.parse(xhr.responseText||'{}')}catch{}
-     if(xhr.status<200||xhr.status>=300)reject(new Error(body.detail||body.error||'Video upload failed (HTTP '+xhr.status+').'));
-     else resolve(body);
-   };
-   xhr.onerror=()=>reject(new Error('Upload connection lost. Check your internet and try again.'));
-   xhr.ontimeout=()=>reject(new Error('Upload timed out. Try a smaller video or a stronger connection.'));
-   xhr.timeout=30*60*1000;
-   xhr.send(form);
- });
-
- if(!data.jobId)throw new Error('The processing service returned no job ID.');
- $('progressFill').style.width='25%';status('Upload complete. Finding clip sections and exporting your videos…');poll(data.jobId);
-}catch(e){status(e.message,true);$('progress').style.display='none';btn.disabled=false;btn.textContent='Upload & Generate clips ↗'}
+ const btn=$('analyzeBtn'),url=$('videoUrl').value.trim();
+ if(!isAllowedLink(url)){status('Please paste a valid HTTPS YouTube or direct video link.',true);return}
+ if(!$('rightsConfirmed').checked){status('Please confirm that you own or are authorised to use this video.',true);return}
+ btn.disabled=true;btn.textContent='Starting…';$('progress').style.display='block';$('progressFill').style.width='2%';
+ status('Connecting to the free open-source clipping worker…');
+ try{
+  const r=await fetch('/api/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({videoUrl:url,clipCount:Number($('clipCount').value),clipLength:$('clipLength').value,aspectRatio:$('aspect').value,rightsConfirmed:true})});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok||!d.jobId)throw new Error(d.error||'Could not start this clipping job.');
+  status('Job accepted. The worker is preparing your source video…');poll(d.jobId);
+ }catch(e){status(e.message,true);$('progress').style.display='none';btn.disabled=false;btn.textContent='Try again ↗'}
 });
 async function poll(id){
- let tries=0, failures=0;
+ let tries=0,failures=0;
  const tick=async()=>{
   tries++;
   try{
-   const r=await fetch('/api/jobs/'+encodeURIComponent(id),{cache:'no-store'});
-   const d=await r.json();
+   const r=await fetch('/api/jobs/'+encodeURIComponent(id),{cache:'no-store'}),d=await r.json();
    if(!r.ok)throw new Error(d.error||'Could not read job status');
-   failures=0;
-   const pct=Math.max(0,Math.min(100,Number(d.progress)||0));
-   $('progressFill').style.width=pct+'%';
-   status(d.message|| (d.status==='queued'?'Waiting for the worker…':'Processing your video… '+pct+'%'));
-   if(d.status==='completed'){
-    $('progressFill').style.width='100%';renderClips(d.clips||[]);
-    status('Finished! Your clips are ready to preview and download.');
-    $('analyzeBtn').disabled=false;$('analyzeBtn').textContent='Upload & Generate clips ↗';return;
-   }
-   if(d.status==='failed'){status(d.error||d.message||'The clip job failed.',true);$('progress').style.display='none';$('analyzeBtn').disabled=false;$('analyzeBtn').textContent='Try again ↗';return;}
-  }catch(e){
-   failures++;
-   if(failures>=5){status('Connection to the processing worker was lost: '+e.message,true);$('progress').style.display='none';$('analyzeBtn').disabled=false;$('analyzeBtn').textContent='Try again ↗';return;}
-   status('Reconnecting to the clip worker… ('+failures+'/5)');
-  }
-  if(tries>=720){status('This video is still processing after 60 minutes. You can refresh and check the job again later.',true);$('analyzeBtn').disabled=false;$('analyzeBtn').textContent='Start another job ↗';return;}
+   failures=0;const pct=Math.max(0,Math.min(100,Number(d.progress)||0));
+   $('progressFill').style.width=pct+'%';status(d.message||'Processing… '+pct+'%');
+   if(d.status==='completed'){$('progressFill').style.width='100%';renderClips(d.clips||[]);status('Finished! Your clips are ready.');$('analyzeBtn').disabled=false;$('analyzeBtn').textContent='Create another project ↗';return}
+   if(d.status==='failed'){status(d.error||d.message||'The clip job failed.',true);$('progress').style.display='none';$('analyzeBtn').disabled=false;$('analyzeBtn').textContent='Try again ↗';return}
+  }catch(e){failures++;if(failures>=6){status('Worker connection failed: '+e.message,true);$('progress').style.display='none';$('analyzeBtn').disabled=false;$('analyzeBtn').textContent='Try again ↗';return}status('Reconnecting to the free worker… ('+failures+'/6)')}
+  if(tries>=720){status('This job is taking longer than expected. The free worker may have restarted; check again shortly.',true);$('analyzeBtn').disabled=false;$('analyzeBtn').textContent='Start another job ↗';return}
   setTimeout(tick,5000);
- };
- tick();
+ };tick();
 }
-function renderClips(items){$('clipSummary').textContent=items.length+' clips generated';if(!items.length){$('clips').className='empty';$('clips').innerHTML='<strong>Job completed, no clips returned</strong>The processing worker did not return any clip files.';return}const grid=document.createElement('div');grid.className='clipgrid';items.forEach((clip,i)=>{const card=document.createElement('article');card.className='clip';const thumb=document.createElement('div');thumb.className='thumb';thumb.style.aspectRatio='9/16';const duration=document.createElement('span');duration.className='duration';duration.textContent=clip.duration||'Short';if(clip.downloadUrl){const video=document.createElement('video');video.src=clip.downloadUrl;video.controls=true;video.playsInline=true;video.preload='metadata';video.style.width='100%';video.style.height='100%';video.style.objectFit='contain';thumb.append(video)}else{const play=document.createElement('div');play.className='play';play.textContent='▶';thumb.append(play)}thumb.append(duration);const title=document.createElement('h3');title.textContent=clip.title||('AI Highlight '+(i+1));const desc=document.createElement('p');desc.textContent=clip.hook||'AI-selected moment';card.append(thumb,title,desc);if(clip.score){const score=document.createElement('span');score.className='score';score.textContent='HOOK SCORE '+clip.score;card.append(score)}if(clip.downloadUrl){const a=document.createElement('a');a.className='btn cyan';a.style.display='flex';a.style.marginTop='12px';a.href=clip.downloadUrl;a.download='';a.textContent='Download MP4 ↓';card.append(a)}grid.append(card)});$('clips').className='';$('clips').replaceWith(grid);grid.id='clips'}
+function renderClips(items){
+ $('clipSummary').textContent=items.length+' clips generated';
+ if(!items.length){$('clips').className='empty';$('clips').textContent='The job completed but no clip files were returned.';return}
+ const grid=document.createElement('div');grid.className='clipgrid';grid.id='clips';
+ items.forEach((clip,i)=>{
+  const card=document.createElement('article');card.className='clip';
+  const thumb=document.createElement('div');thumb.className='thumb';thumb.style.aspectRatio='9/16';
+  if(clip.downloadUrl){const video=document.createElement('video');video.src=clip.downloadUrl;video.controls=true;video.playsInline=true;video.preload='metadata';video.style.width='100%';video.style.height='100%';video.style.objectFit='contain';thumb.append(video)}
+  const duration=document.createElement('span');duration.className='duration';duration.textContent=clip.duration||'Short';thumb.append(duration);
+  const title=document.createElement('h3');title.textContent=clip.title||('AI Highlight '+(i+1));
+  const desc=document.createElement('p');desc.textContent=clip.hook||'Selected using audio and scene analysis';
+  card.append(thumb,title,desc);
+  if(clip.score!==undefined){const score=document.createElement('span');score.className='score';score.textContent='HIGHLIGHT SCORE '+clip.score;card.append(score)}
+  if(clip.downloadUrl){const a=document.createElement('a');a.className='btn cyan';a.style.display='flex';a.style.marginTop='12px';a.href=clip.downloadUrl;a.download='';a.textContent='Download MP4 ↓';card.append(a)}
+  grid.append(card);
+ });
+ $('clips').replaceWith(grid);
+}
 </script></body></html>
