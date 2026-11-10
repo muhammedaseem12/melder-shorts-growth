@@ -98,7 +98,11 @@ def _run_job_locked(job_id, payload, uploaded_source=None):
         youtube_hosts = {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "www.youtu.be"}
         if parsed.scheme != "https" or not host:
             raise ValueError("Please use a valid HTTPS video link.")
-        if host in youtube_hosts:
+        if uploaded_source is not None:
+            source = Path(uploaded_source)
+            if not source.is_file():
+                raise ValueError("The uploaded source video is missing. Please submit the video link again.")
+        elif host in youtube_hosts:
             if not payload.get("rightsConfirmed"):
                 raise ValueError("Confirm that you own this video or have permission to create clips from it.")
             import yt_dlp
@@ -113,11 +117,11 @@ def _run_job_locked(job_id, payload, uploaded_source=None):
                         if job_id in jobs:
                             jobs[job_id].update(progress=min(15, pct), message="Downloading source video…")
             options = {
-                "format": "bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+                "format": "bestvideo[height<=480]+bestaudio/best[height<=480]/best",
                 "outtmpl": source_template,
                 "merge_output_format": "mp4",
                 "noplaylist": True,
-                "max_filesize": 500 * 1024 * 1024,
+                "max_filesize": 250 * 1024 * 1024,
                 "socket_timeout": 20,
                 "retries": 2,
                 "fragment_retries": 2,
@@ -132,7 +136,7 @@ def _run_job_locked(job_id, payload, uploaded_source=None):
                 if not candidates:
                     raise ValueError("The source video could not be downloaded. Check that downloading is allowed for this video.")
                 source = max(candidates, key=lambda p: p.stat().st_size)
-                if source.stat().st_size > 500 * 1024 * 1024:
+                if source.stat().st_size > 250 * 1024 * 1024:
                     raise ValueError("Video exceeds the 500 MB processing limit.")
             except Exception as exc:
                 raise ValueError("Could not retrieve this YouTube video. It may be private, restricted, unavailable, or not downloadable. " + str(exc)[:220])
@@ -147,7 +151,7 @@ def _run_job_locked(job_id, payload, uploaded_source=None):
                     for chunk in response.iter_content(1024*1024):
                         if chunk:
                             total += len(chunk)
-                            if total > 500*1024*1024: raise ValueError("Video exceeds the 500 MB processing limit.")
+                            if total > 250*1024*1024: raise ValueError("Video exceeds the 250 MB processing limit.")
                             out.write(chunk)
         probe = subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",str(source)],capture_output=True,text=True,check=True)
         duration = float(probe.stdout.strip())
