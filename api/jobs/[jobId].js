@@ -19,7 +19,7 @@ module.exports = async (req, res) => {
       score: Number.isFinite(Number(c.score)) ? Math.max(0,Math.min(100,Number(c.score))) : undefined,
       downloadUrl: typeof c.downloadUrl === "string" && c.downloadUrl.startsWith("/") ? new URL(c.downloadUrl, worker).toString() : undefined
     })) : [];
-    return res.status(200).json({ status:data.status, progress:Math.max(0,Math.min(100,Number(data.progress)||0)), message:String(data.message||"").slice(0,300), clips, error:data.status==="failed"?String(data.message||"Processing failed").slice(0,300):undefined });
+    return res.status(200).json({ status:data.status, progress:Math.max(0,Math.min(100,Number(data.progress)||0)), elapsedSeconds:Math.max(0,Number(data.elapsedSeconds)||0), etaSeconds:Number.isFinite(Number(data.etaSeconds))?Math.max(0,Number(data.etaSeconds)):null, message:String(data.message||"").slice(0,300), clips, error:data.status==="failed"?String(data.message||"Processing failed").slice(0,300):undefined });
   } catch {
     return res.status(502).json({ error: "Could not reach the free video worker." });
   }
