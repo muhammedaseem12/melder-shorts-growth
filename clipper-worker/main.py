@@ -4,6 +4,7 @@ from fastapi import FastAPI, Header, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
+from urllib.parse import urlparse
 
 app = FastAPI(title="Melder Clip Worker")
 app.add_middleware(CORSMiddleware, allow_origins=["https://melder-shorts-growth.vercel.app"], allow_credentials=False, allow_methods=["GET","POST","OPTIONS"], allow_headers=["Authorization","Content-Type"])
@@ -19,6 +20,7 @@ class JobRequest(BaseModel):
     clipCount: int = 5
     clipLength: str = "30-45"
     aspectRatio: str = "9:16"
+    rightsConfirmed: bool = False
 
 def auth(value):
     if not SECRET or value != f"Bearer {SECRET}":
@@ -93,18 +95,61 @@ def _run_job_locked(job_id, payload, uploaded_source=None):
         url = str(payload["videoUrl"])
         if any(host in url.lower() for host in ("youtube.com", "youtu.be", "youtube-nocookie.com")):
             raise ValueError("YouTube links are not downloaded by this worker. Use a video file you own or have permission to process, hosted at a direct MP4/WebM URL.")
-        source = uploaded_source or (folder / "source.bin")
-        if uploaded_source is None:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        youtube_hosts = {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "www.youtu.be"}
+        if parsed.scheme != "https" or not host:
+            raise ValueError("Please use a valid HTTPS video link.")
+        if host in youtube_hosts:
+            if not payload.get("rightsConfirmed"):
+                raise ValueError("Confirm that you own this video or have permission to create clips from it.")
+            import yt_dlp
+            source_template = str(folder / "source.%(ext)s")
+            with lock: jobs[job_id].update(progress=3, message="Connecting to the permitted YouTube source…")
+            def download_progress(info):
+                if info.get("status") == "downloading":
+                    total = info.get("total_bytes") or info.get("total_bytes_estimate") or 0
+                    done = info.get("downloaded_bytes") or 0
+                    pct = int(3 + 12 * done / total) if total else 5
+                    with lock:
+                        if job_id in jobs:
+                            jobs[job_id].update(progress=min(15, pct), message="Downloading source video…")
+            options = {
+                "format": "bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+                "outtmpl": source_template,
+                "merge_output_format": "mp4",
+                "noplaylist": True,
+                "max_filesize": 500 * 1024 * 1024,
+                "socket_timeout": 20,
+                "retries": 2,
+                "fragment_retries": 2,
+                "quiet": True,
+                "no_warnings": True,
+                "progress_hooks": [download_progress],
+            }
+            try:
+                with yt_dlp.YoutubeDL(options) as ydl:
+                    ydl.extract_info(url, download=True)
+                candidates = [p for p in folder.glob("source.*") if p.is_file() and p.suffix not in (".part", ".ytdl")]
+                if not candidates:
+                    raise ValueError("The source video could not be downloaded. Check that downloading is allowed for this video.")
+                source = max(candidates, key=lambda p: p.stat().st_size)
+                if source.stat().st_size > 500 * 1024 * 1024:
+                    raise ValueError("Video exceeds the 500 MB processing limit.")
+            except Exception as exc:
+                raise ValueError("Could not retrieve this YouTube video. It may be private, restricted, unavailable, or not downloadable. " + str(exc)[:220])
+        else:
+            source = folder / "source.bin"
             with requests.get(url, stream=True, timeout=(20, 180), headers={"User-Agent":"MelderClipper/1.0"}) as response:
                 response.raise_for_status()
                 ctype = response.headers.get("content-type", "")
-                if "text/html" in ctype.lower(): raise ValueError("That URL serves a webpage, not a video file. Use a direct video-file URL.")
+                if "text/html" in ctype.lower(): raise ValueError("That URL serves a webpage. Paste a direct MP4/WebM URL.")
                 total = 0
                 with source.open("wb") as out:
                     for chunk in response.iter_content(1024*1024):
                         if chunk:
                             total += len(chunk)
-                            if total > 700*1024*1024: raise ValueError("Video exceeds the 700 MB processing limit.")
+                            if total > 500*1024*1024: raise ValueError("Video exceeds the 500 MB processing limit.")
                             out.write(chunk)
         probe = subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",str(source)],capture_output=True,text=True,check=True)
         duration = float(probe.stdout.strip())
@@ -182,8 +227,11 @@ def health(): return {"ok":True,"service":"melder-clip-worker"}
 @app.post("/jobs")
 def create_job(body: JobRequest, authorization: str = Header(default="")):
     auth(authorization)
+    parsed = urlparse(str(body.videoUrl))
+    if parsed.hostname and parsed.hostname.lower() in {"youtube.com","www.youtube.com","m.youtube.com","youtu.be","www.youtu.be"} and not body.rightsConfirmed:
+        raise HTTPException(400, "Confirm that you own this video or have permission to clip it.")
     jid=uuid.uuid4().hex
-    with lock: jobs[jid]={"status":"processing","progress":0,"message":"Downloading and preparing your video","clips":[]}
+    with lock: jobs[jid]={"status":"queued","progress":0,"message":"Waiting for the free clip worker…","clips":[]}
     threading.Thread(target=run_job,args=(jid,body.model_dump(mode="json")),daemon=True).start()
     return {"jobId":jid,"status":"processing"}
 
