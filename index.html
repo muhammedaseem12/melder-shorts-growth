@@ -86,6 +86,33 @@ try{
  $('progressFill').style.width='25%';status('Upload complete. Finding clip sections and exporting your videos…');poll(data.jobId);
 }catch(e){status(e.message,true);$('progress').style.display='none';btn.disabled=false;btn.textContent='Upload & Generate clips ↗'}
 });
-async function poll(id){let tries=0;const timer=setInterval(async()=>{tries++;try{const r=await fetch('/api/jobs/'+encodeURIComponent(id));const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not read job status');$('progressFill').style.width=Math.min(90,30+tries*4)+'%';status(d.message||('Processing your video… '+(d.progress||0)+'%'));if(d.status==='completed'){clearInterval(timer);$('progressFill').style.width='100%';renderClips(d.clips||[]);status('Finished! Your clips are ready to preview and download.');$('analyzeBtn').disabled=false;$('analyzeBtn').textContent='Find standout moments ↗'}else if(d.status==='failed'){clearInterval(timer);throw new Error(d.error||'The clip job failed.')} }catch(e){clearInterval(timer);status(e.message,true);$('progress').style.display='none';$('analyzeBtn').disabled=false;$('analyzeBtn').textContent='Try again ↗'}if(tries>=120){clearInterval(timer);status('This job is taking longer than expected. Check again later from your processing dashboard.',true);$('analyzeBtn').disabled=false;$('analyzeBtn').textContent='Start another job ↗'}},5000)}
+async function poll(id){
+ let tries=0, failures=0;
+ const tick=async()=>{
+  tries++;
+  try{
+   const r=await fetch('/api/jobs/'+encodeURIComponent(id),{cache:'no-store'});
+   const d=await r.json();
+   if(!r.ok)throw new Error(d.error||'Could not read job status');
+   failures=0;
+   const pct=Math.max(0,Math.min(100,Number(d.progress)||0));
+   $('progressFill').style.width=pct+'%';
+   status(d.message|| (d.status==='queued'?'Waiting for the worker…':'Processing your video… '+pct+'%'));
+   if(d.status==='completed'){
+    $('progressFill').style.width='100%';renderClips(d.clips||[]);
+    status('Finished! Your clips are ready to preview and download.');
+    $('analyzeBtn').disabled=false;$('analyzeBtn').textContent='Upload & Generate clips ↗';return;
+   }
+   if(d.status==='failed'){status(d.error||d.message||'The clip job failed.',true);$('progress').style.display='none';$('analyzeBtn').disabled=false;$('analyzeBtn').textContent='Try again ↗';return;}
+  }catch(e){
+   failures++;
+   if(failures>=5){status('Connection to the processing worker was lost: '+e.message,true);$('progress').style.display='none';$('analyzeBtn').disabled=false;$('analyzeBtn').textContent='Try again ↗';return;}
+   status('Reconnecting to the clip worker… ('+failures+'/5)');
+  }
+  if(tries>=720){status('This video is still processing after 60 minutes. You can refresh and check the job again later.',true);$('analyzeBtn').disabled=false;$('analyzeBtn').textContent='Start another job ↗';return;}
+  setTimeout(tick,5000);
+ };
+ tick();
+}
 function renderClips(items){$('clipSummary').textContent=items.length+' clips generated';if(!items.length){$('clips').className='empty';$('clips').innerHTML='<strong>Job completed, no clips returned</strong>The processing worker did not return any clip files.';return}const grid=document.createElement('div');grid.className='clipgrid';items.forEach((clip,i)=>{const card=document.createElement('article');card.className='clip';const thumb=document.createElement('div');thumb.className='thumb';thumb.style.aspectRatio='9/16';const duration=document.createElement('span');duration.className='duration';duration.textContent=clip.duration||'Short';if(clip.downloadUrl){const video=document.createElement('video');video.src=clip.downloadUrl;video.controls=true;video.playsInline=true;video.preload='metadata';video.style.width='100%';video.style.height='100%';video.style.objectFit='contain';thumb.append(video)}else{const play=document.createElement('div');play.className='play';play.textContent='▶';thumb.append(play)}thumb.append(duration);const title=document.createElement('h3');title.textContent=clip.title||('AI Highlight '+(i+1));const desc=document.createElement('p');desc.textContent=clip.hook||'AI-selected moment';card.append(thumb,title,desc);if(clip.score){const score=document.createElement('span');score.className='score';score.textContent='HOOK SCORE '+clip.score;card.append(score)}if(clip.downloadUrl){const a=document.createElement('a');a.className='btn cyan';a.style.display='flex';a.style.marginTop='12px';a.href=clip.downloadUrl;a.download='';a.textContent='Download MP4 ↓';card.append(a)}grid.append(card)});$('clips').className='';$('clips').replaceWith(grid);grid.id='clips'}
 </script></body></html>
