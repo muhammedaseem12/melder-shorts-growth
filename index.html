@@ -60,9 +60,28 @@ try{
  const form=new FormData();form.append('file',file);form.append('clipCount',$('clipCount').value);form.append('clipLength',$('clipLength').value);form.append('aspectRatio',$('aspect').value);
  status('Uploading '+file.name+'… Keep this page open until upload finishes.');
  const workerUrl='https://melder-clip-worker-v2.onrender.com/jobs/upload';
- const res=await fetch(workerUrl,{method:'POST',headers:{'Authorization':'Bearer '+tokenData.token},body:form});
- const data=await res.json().catch(()=>({}));
- if(!res.ok)throw new Error(data.detail||data.error||'Video upload failed.');
+ const data=await new Promise((resolve,reject)=>{
+   const xhr=new XMLHttpRequest();
+   xhr.open('POST',workerUrl);
+   xhr.setRequestHeader('Authorization','Bearer '+tokenData.token);
+   xhr.upload.onprogress=(event)=>{
+     if(event.lengthComputable){
+       const pct=Math.round((event.loaded/event.total)*100);
+       $('progressFill').style.width=Math.max(1,pct)+'%';
+       status('Uploading video… '+pct+'% ('+Math.round(event.loaded/1048576)+' / '+Math.round(event.total/1048576)+' MB). Keep this page open.');
+     }
+   };
+   xhr.onload=()=>{
+     let body={};try{body=JSON.parse(xhr.responseText||'{}')}catch{}
+     if(xhr.status<200||xhr.status>=300)reject(new Error(body.detail||body.error||'Video upload failed (HTTP '+xhr.status+').'));
+     else resolve(body);
+   };
+   xhr.onerror=()=>reject(new Error('Upload connection lost. Check your internet and try again.'));
+   xhr.ontimeout=()=>reject(new Error('Upload timed out. Try a smaller video or a stronger connection.'));
+   xhr.timeout=30*60*1000;
+   xhr.send(form);
+ });
+
  if(!data.jobId)throw new Error('The processing service returned no job ID.');
  $('progressFill').style.width='25%';status('Upload complete. Finding clip sections and exporting your videos…');poll(data.jobId);
 }catch(e){status(e.message,true);$('progress').style.display='none';btn.disabled=false;btn.textContent='Upload & Generate clips ↗'}
