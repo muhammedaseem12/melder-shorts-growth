@@ -54,7 +54,7 @@ def run_job(job_id, payload):
         for i in range(count):
             start = max(0, (duration-length) * (i/(max(1,count-1)))) if count > 1 else max(0,(duration-length)/2)
             out = folder / f"clip-{i+1}.mp4"
-            subprocess.run(["ffmpeg","-y","-ss",str(start),"-i",str(source),"-t",str(min(length,duration-start)),"-vf",vf,"-c:v","libx264","preset","veryfast","-crf","24","-c:a","aac","-b:a","128k","-movflags","+faststart",str(out)],capture_output=True,check=True,timeout=900)
+            subprocess.run(["ffmpeg","-y","-ss",str(start),"-i",str(source),"-t",str(min(length,duration-start)),"-vf",vf,"-c:v","libx264","-preset","veryfast","-crf","24","-c:a","aac","-b:a","128k","-movflags","+faststart",str(out)],capture_output=True,check=True,timeout=900)
             clips.append({"title":f"Clip {i+1}","hook":"Auto-extracted excerpt","duration":round(min(length,duration-start)),"score":None,"downloadUrl":f"/jobs/{job_id}/clips/{i+1}"})
             with lock: jobs[job_id].update(progress=int((i+1)/count*100), clips=clips)
         with lock: jobs[job_id].update(status="completed",progress=100,message="Clips are ready. These are evenly spaced excerpts, not AI-ranked highlights.",clips=clips)
