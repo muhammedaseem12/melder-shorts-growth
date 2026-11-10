@@ -78,6 +78,9 @@ def run_job(job_id, payload, uploaded_source=None):
         if job_id in jobs:
             jobs[job_id].update(status="queued", progress=0, message="Waiting for the clip worker to finish the current video…")
     processing_lock.acquire()
+    with lock:
+        if job_id in jobs:
+            jobs[job_id].update(status="processing", progress=1, message="Worker started. Preparing video analysis…")
     try:
         _run_job_locked(job_id, payload, uploaded_source)
     finally:
