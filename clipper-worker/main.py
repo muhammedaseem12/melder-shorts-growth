@@ -82,7 +82,7 @@ def run_job(job_id, payload, uploaded_source=None):
     processing_lock.acquire()
     with lock:
         if job_id in jobs:
-            jobs[job_id].update(status="processing", progress=1, message="Worker started. Preparing video analysis…")
+            jobs[job_id].update(status="processing", progress=1, processingStartedAt=time.time(), message="Worker started. Preparing video analysis…")
     try:
         _run_job_locked(job_id, payload, uploaded_source)
     finally:
@@ -219,7 +219,7 @@ async def upload_job(
     finally:
         await file.close()
     payload = {"videoUrl": "", "clipCount": clipCount, "clipLength": clipLength, "aspectRatio": aspectRatio}
-    with lock: jobs[jid] = {"status":"processing","progress":0,"message":"Upload complete. Preparing your video","clips":[]}
+    with lock: jobs[jid] = {"status":"queued","progress":0,"startedAt":time.time(),"message":"Upload complete. Waiting for the free worker…","clips":[]}
     threading.Thread(target=run_job, args=(jid, payload, source), daemon=True).start()
     return {"jobId": jid, "status":"processing"}
 
@@ -233,7 +233,7 @@ def create_job(body: JobRequest, authorization: str = Header(default="")):
     if parsed.hostname and parsed.hostname.lower() in {"youtube.com","www.youtube.com","m.youtube.com","youtu.be","www.youtu.be"} and not body.rightsConfirmed:
         raise HTTPException(400, "Confirm that you own this video or have permission to clip it.")
     jid=uuid.uuid4().hex
-    with lock: jobs[jid]={"status":"queued","progress":0,"message":"Waiting for the free clip worker…","clips":[]}
+    with lock: jobs[jid]={"status":"queued","progress":0,"startedAt":time.time(),"message":"Waiting for the free clip worker…","clips":[]}
     threading.Thread(target=run_job,args=(jid,body.model_dump(mode="json")),daemon=True).start()
     return {"jobId":jid,"status":"processing"}
 
@@ -242,7 +242,18 @@ def get_job(job_id: str, authorization: str = Header(default="")):
     auth(authorization)
     with lock:
         if job_id not in jobs: raise HTTPException(404,"Job not found")
-        return dict(jobs[job_id])
+        data = dict(jobs[job_id])
+        now = time.time()
+        data["elapsedSeconds"] = max(0, int(now - data.get("startedAt", now)))
+        if data.get("status") == "completed":
+            data["etaSeconds"] = 0
+        elif data.get("status") == "processing" and data.get("processingStartedAt") and data.get("progress", 0) >= 10:
+            elapsed = max(1, now - data["processingStartedAt"])
+            remaining = elapsed * (100 - data["progress"]) / max(1, data["progress"])
+            data["etaSeconds"] = max(0, int(remaining))
+        else:
+            data["etaSeconds"] = None
+        return data
 
 @app.get("/jobs/{job_id}/clips/{number}")
 def get_clip(job_id: str, number: int):
