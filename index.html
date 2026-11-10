@@ -50,7 +50,7 @@ function sourceUrlError(raw){try{const u=new URL(raw.trim());if(u.protocol!=="ht
 $('analyzeBtn').addEventListener('click',async()=>{
 const file=$('videoFile').files[0];const btn=$('analyzeBtn');
 if(!file){status('Please choose a video file first.',true);return}
-if(!/\\.(mp4|webm)$/i.test(file.name)){status('Please choose an MP4 or WebM video.',true);return}
+if(!/\.(mp4|webm)$/i.test(file.name)){status('Please choose an MP4 or WebM video.',true);return}
 if(file.size>500*1024*1024){status('Video is larger than the 500 MB limit.',true);return}
 btn.disabled=true;btn.textContent='Uploading…';$('progress').style.display='block';$('progressFill').style.width='5%';
 status('Preparing a secure upload…');
