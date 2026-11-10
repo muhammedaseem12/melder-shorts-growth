@@ -12,13 +12,13 @@
 </head>
 <body><main class="shell">
 <header class="top"><div class="brand"><div class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M8 5.8c0-.8.9-1.3 1.6-.9l9.2 5.3c.7.4.7 1.4 0 1.8l-9.2 5.3c-.7.4-1.6-.1-1.6-.9V5.8Z" fill="white"/></svg></div><div>MELDER<small>AI CLIPPER STUDIO</small></div></div><div class="pill">LONG VIDEO → SHORTS</div></header>
-<section class="hero"><div class="eyebrow">Your AI-powered clipping workspace</div><h1>One long video.<br>Multiple standout Shorts.</h1><p>Find the strongest moments, shape them into hook-first vertical clips, add captions and export for YouTube Shorts, Reels and TikTok.</p></section>
+<section class="hero"><div class="eyebrow">Your video clipping workspace</div><h1>One long video.<br>Multiple standout Shorts.</h1><p>Turn a video file into short MP4 excerpts, with vertical, square or landscape formatting for Shorts, Reels and TikTok.</p></section>
 <div class="workspace">
 <section class="card">
 <div class="cardhead"><h2>Start a new clipping project</h2><span class="step">STEP 01 / SOURCE</span></div>
-<label class="label" for="videoUrl">Direct video file URL</label>
-<div class="urlrow"><input id="videoUrl" class="field" type="url" placeholder="Paste a direct MP4 or WebM video URL…"><button id="analyzeBtn" class="btn">Find viral moments ↗</button></div>
-<div class="hint">Use a direct MP4/WebM file URL for a video you own or have permission to process. YouTube page links are not downloaded.</div>
+<label class="label" for="videoUrl">Direct video file URL (MP4 / WebM)</label>
+<div class="urlrow"><input id="videoUrl" class="field" type="url" placeholder="Paste a direct .mp4 or .webm file link…"><button id="analyzeBtn" class="btn">Find viral moments ↗</button></div>
+<div class="hint">Paste a direct HTTPS link to an MP4/WebM file that you own or have permission to use. YouTube watch/share links are not supported; they point to a webpage, not the video file.</div>
 <div class="options">
 <div class="option"><label for="clipCount">Number of clips</label><select id="clipCount"><option value="5">5 clips</option><option value="10" selected>10 clips</option><option value="15">15 clips</option><option value="20">20 clips</option></select></div>
 <div class="option"><label for="clipLength">Clip duration</label><select id="clipLength"><option value="15-30">15–30 seconds</option><option value="30-45" selected>30–45 seconds</option><option value="45-60">45–60 seconds</option><option value="60-90">60–90 seconds</option></select></div>
@@ -27,26 +27,27 @@
 <div id="status" class="status" role="status" aria-live="polite"></div><div id="progress" class="progress"><div id="progressFill"></div></div>
 </section>
 <aside class="card"><h3 class="side-title">How your clips are made</h3><div class="steps">
-<div class="stepitem"><div class="stepicon">⌕</div><div><b>1. Analyse the video</b><span>Extract speech, topics, speaker changes and scene boundaries.</span></div></div>
-<div class="stepitem"><div class="stepicon">✦</div><div><b>2. Score the moments</b><span>Rank hooks, emotional peaks, useful insights and story payoffs.</span></div></div>
-<div class="stepitem"><div class="stepicon">▣</div><div><b>3. Build vertical clips</b><span>Reframe, add animated captions and keep the context intact.</span></div></div>
-<div class="stepitem"><div class="stepicon">⇩</div><div><b>4. Review and export</b><span>Preview each clip, edit timestamps and export MP4 files.</span></div></div>
+<div class="stepitem"><div class="stepicon">⌕</div><div><b>1. Check the video</b><span>Check the video file and its duration before clipping.</span></div></div>
+<div class="stepitem"><div class="stepicon">✦</div><div><b>2. Choose clip sections</b><span>Create evenly spaced excerpts from across the video.</span></div></div>
+<div class="stepitem"><div class="stepicon">▣</div><div><b>3. Format the clips</b><span>Crop each excerpt to your selected aspect ratio.</span></div></div>
+<div class="stepitem"><div class="stepicon">⇩</div><div><b>4. Download your clips</b><span>Download the generated MP4 files and review them before publishing.</span></div></div>
 </div></aside>
 </div>
 <section class="section"><div class="sectionhead"><h2>Your generated clips</h2><span id="clipSummary">Your clips will appear here</span></div><div id="clips" class="empty"><strong>No clips yet</strong>Paste a direct video-file URL above to start a project. Your generated clips will appear here when the processing service is connected.</div></section>
 <section class="section"><div class="sectionhead"><h2>Built for creator workflows</h2><span>Made for short-form content</span></div><div class="featuregrid">
-<div class="feature"><i>🧠</i><b>Hook detection</b><span>Find high-interest openings and compelling moments.</span></div>
-<div class="feature"><i>💬</i><b>Animated captions</b><span>Readable subtitles with emphasis on key words.</span></div>
-<div class="feature"><i>🎯</i><b>Smart reframing</b><span>Vertical crop with speaker-aware framing.</span></div>
-<div class="feature"><i>⚡</i><b>Batch export</b><span>Review and export multiple MP4 clips.</span></div>
+<div class="feature"><i>✂️</i><b>Evenly spaced clips</b><span>Create excerpts from different parts of your source video.</span></div>
+<div class="feature"><i>🎬</i><b>MP4 output</b><span>Export clips as downloadable MP4 video files.</span></div>
+<div class="feature"><i>📐</i><b>Aspect ratios</b><span>Choose vertical, square or landscape output.</span></div>
+<div class="feature"><i>⚡</i><b>Batch processing</b><span>Generate several excerpts in one project.</span></div>
 </div></section>
 <footer class="foot">MELDER AI CLIPPER · Create with permission · Review every clip before publishing<br>AI can help improve packaging and retention, but no tool can guarantee viral reach or views.</footer>
 </main>
 <script>
 const $=id=>document.getElementById(id);
-function validVideoFileUrl(raw){try{const u=new URL(raw.trim());return u.protocol==="https:" && !["youtube.com","www.youtube.com","youtu.be","www.youtu.be"].includes(u.hostname.toLowerCase())}catch{return false}}
+function validVideoFileUrl(raw){try{const u=new URL(raw.trim());return u.protocol==="https:" && !["youtube.com","www.youtube.com","m.youtube.com","youtu.be","www.youtu.be","youtube-nocookie.com"].includes(u.hostname.toLowerCase())}catch{return false}}
+function videoUrlError(raw){try{const u=new URL(raw.trim());if(["youtube.com","www.youtube.com","m.youtube.com","youtu.be","www.youtu.be","youtube-nocookie.com"].includes(u.hostname.toLowerCase()))return "This is a YouTube page link, not a direct video file. Please use a direct HTTPS MP4/WebM file URL for a video you own or have permission to process.";if(u.protocol!=="https:")return "Please use a secure HTTPS video-file link.";return "That link must point directly to an MP4 or WebM video file, not a webpage."}catch{return "Please paste a valid direct HTTPS MP4/WebM video-file URL."}}
 function status(message,error=false){$('status').textContent=message;$('status').classList.toggle('error',error);$('status').classList.remove('hidden');$('status').style.display='block'}
-$('analyzeBtn').addEventListener('click',async()=>{const url=$('videoUrl').value.trim();if(!validVideoFileUrl(url)){status('Please enter a direct HTTPS video-file URL (MP4 or WebM), not a YouTube page link.',true);return}
+$('analyzeBtn').addEventListener('click',async()=>{const url=$('videoUrl').value.trim();if(!validVideoFileUrl(url)){status(videoUrlError(url),true);return}
 const btn=$('analyzeBtn');btn.disabled=true;btn.textContent='Submitting…';$('progress').style.display='block';$('progressFill').style.width='12%';status('Video link validated. Sending your project to the secure AI processing service…');
 try{const res=await fetch('/api/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({videoUrl:url,clipCount:Number($('clipCount').value),clipLength:$('clipLength').value,aspectRatio:$('aspect').value})});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||'The processing service is not connected yet.');if(!data.jobId)throw new Error('The processing service returned no job ID.');$('progressFill').style.width='30%';status('Project submitted. Job ID: '+data.jobId+'. Processing has started.');poll(data.jobId)}catch(e){status(e.message,true);$('progress').style.display='none';btn.disabled=false;btn.textContent='Find viral moments ↗'}});
 async function poll(id){let tries=0;const timer=setInterval(async()=>{tries++;try{const r=await fetch('/api/jobs/'+encodeURIComponent(id));const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not read job status');$('progressFill').style.width=Math.min(90,30+tries*4)+'%';status(d.message||('Processing your video… '+(d.progress||0)+'%'));if(d.status==='completed'){clearInterval(timer);$('progressFill').style.width='100%';renderClips(d.clips||[]);status('Finished! Review your clips before downloading or publishing.');$('analyzeBtn').disabled=false;$('analyzeBtn').textContent='Find viral moments ↗'}else if(d.status==='failed'){clearInterval(timer);throw new Error(d.error||'The clip job failed.')} }catch(e){clearInterval(timer);status(e.message,true);$('progress').style.display='none';$('analyzeBtn').disabled=false;$('analyzeBtn').textContent='Try again ↗'}if(tries>=120){clearInterval(timer);status('This job is taking longer than expected. Check again later from your processing dashboard.',true);$('analyzeBtn').disabled=false;$('analyzeBtn').textContent='Start another job ↗'}},5000)}
